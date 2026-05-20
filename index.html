@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>在线刷题系统</title>
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root { --primary: #4f46e5; --primary-light: #6366f1; --sidebar-w: 240px; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #f1f5f9; min-height: 100vh; margin: 0; }
+.sidebar { width: var(--sidebar-w); background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); color: #fff; position: fixed; left: 0; top: 0; bottom: 0; z-index: 1000; transition: transform .3s; display: flex; flex-direction: column; }
+.sidebar .logo { padding: 20px; font-size: 20px; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,.1); text-align: center; }
+.sidebar .logo i { font-size: 28px; color: var(--primary-light); }
+.sidebar .nav-wrap { flex: 1; overflow-y: auto; padding-top: 8px; }
+.sidebar .nav-item { padding: 12px 20px; cursor: pointer; transition: all .2s; border-left: 3px solid transparent; display: flex; align-items: center; gap: 10px; color: #94a3b8; user-select: none; }
+.sidebar .nav-item:hover, .sidebar .nav-item.active { background: rgba(255,255,255,.08); color: #fff; border-left-color: var(--primary-light); }
+.sidebar .nav-item i { font-size: 18px; width: 24px; text-align: center; }
+.sidebar .user-info { padding: 16px 20px; border-top: 1px solid rgba(255,255,255,.1); font-size: 14px; }
+.main { margin-left: var(--sidebar-w); padding: 24px; min-height: 100vh; }
+.card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.card-header { background: #fff; border-bottom: 1px solid #e2e8f0; border-radius: 12px 12px 0 0 !important; padding: 16px 20px; font-weight: 600; }
+.stat-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.stat-card .icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+.btn-primary { background: var(--primary); border-color: var(--primary); }
+.btn-primary:hover { background: var(--primary-light); border-color: var(--primary-light); }
+.badge-diff { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+.diff-easy { background: #dcfce7; color: #166534; }
+.diff-medium { background: #fef9c3; color: #854d0e; }
+.diff-hard { background: #fee2e2; color: #991b1b; }
+.question-type { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+.type-single { background: #dbeafe; color: #1e40af; }
+.type-multi { background: #f3e8ff; color: #6b21a8; }
+.type-judge { background: #fce7f3; color: #9d174d; }
+.correct-answer { color: #16a34a; font-weight: 600; }
+.wrong-answer { color: #dc2626; }
+.option-item { padding: 10px 16px; margin: 4px 0; border: 2px solid #e2e8f0; border-radius: 8px; cursor: pointer; transition: all .2s; }
+.option-item:hover { border-color: var(--primary-light); background: #f8fafc; }
+.option-item.selected { border-color: var(--primary); background: #eef2ff; }
+.option-item.correct { border-color: #16a34a; background: #f0fdf4; }
+.option-item.incorrect { border-color: #dc2626; background: #fef2f2; }
+.table-hover tbody tr { cursor: pointer; }
+.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.login-card { width: 420px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+.timer { font-size: 32px; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.import-zone { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: all .3s; }
+.import-zone:hover, .import-zone.dragover { border-color: var(--primary); background: #f8fafc; }
+.import-zone i { font-size: 48px; color: #94a3b8; }
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+.loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,.7); z-index: 9998; display: flex; align-items: center; justify-content: center; }
+@media (max-width: 768px) { .sidebar { transform: translateX(-100%); } .sidebar.show { transform: translateX(0); } .main { margin-left: 0; } .login-card { width: 95%; } }
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Login Page -->
+<div id="loginPage" class="login-page">
+  <div class="login-card card">
+    <div class="card-body p-5">
+      <div class="text-center mb-4">
+        <i class="bi bi-book-half" style="font-size:48px;color:var(--primary)"></i>
+        <h3 class="mt-2">在线刷题系统</h3>
+        <p class="text-muted">请使用管理员分配的账号登录</p>
+      </div>
+      <div class="mb-3"><label class="form-label">用户名</label><input type="text" class="form-control" id="loginUsername" placeholder="请输入用户名"></div>
+      <div class="mb-3"><label class="form-label">密码</label><input type="password" class="form-control" id="loginPassword" placeholder="请输入密码" onkeydown="if(event.key==='Enter')login()"></div>
+      <button class="btn btn-primary w-100 py-2" onclick="login()">登 录</button>
+      <p class="text-muted text-center mt-3 mb-0" style="font-size:13px">系统不支持自主注册，请联系管理员添加账号</p>
+    </div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="mainApp" style="display:none">
+  <nav class="sidebar" id="sidebar">
+    <div class="logo"><i class="bi bi-book-half"></i> 刷题系统</div>
+    <div class="nav-wrap" id="sidebarNav"></div>
+    <div class="user-info">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-person-circle" style="font-size:24px"></i>
+        <div><div id="sidebarUserName" style="font-weight:600"></div><small id="sidebarUserRole" class="text-muted"></small></div>
+        <button class="btn btn-sm btn-outline-light ms-auto" onclick="logout()" title="退出"><i class="bi bi-box-arrow-right"></i></button>
+      </div>
+    </div>
+  </nav>
+  <div class="main" id="mainContent"></div>
+</div>
+
+<div id="modalContainer"></div>
+
+<script>
+// ==================== API ====================
+const API = '';
+async function api(method, url, body) {
+  const opts = { method, headers: {} };
+  if (body instanceof FormData) { opts.body = body; }
+  else if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch(API + url, opts);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `请求失败 (${res.status})`);
+  return data;
+}
+
+// ==================== AUTH ====================
+let currentUser = null;
+
+async function login() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  if (!username || !password) return showToast('请输入用户名和密码', 'warning');
+  try {
+    const data = await api('POST', '/api/login', { username, password });
+    currentUser = data.user;
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    renderApp();
+    showToast(`欢迎回来，${currentUser.name}！`, 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+function logout() {
+  currentUser = null;
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+// ==================== RENDER ====================
+function renderApp() {
+  document.getElementById('sidebarUserName').textContent = currentUser.name;
+  document.getElementById('sidebarUserRole').textContent = currentUser.role === 'admin' ? '管理员' : '学员';
+  const isAdmin = currentUser.role === 'admin';
+  const adminNav = [
+    { id: 'dashboard', icon: 'bi-speedometer2', label: '仪表盘' },
+    { id: 'users', icon: 'bi-people', label: '用户管理' },
+    { id: 'questions', icon: 'bi-journal-text', label: '题库管理' },
+    { id: 'exams', icon: 'bi-file-earmark-text', label: '试卷管理' },
+    { id: 'reports', icon: 'bi-bar-chart', label: '成绩报表' },
+    { id: 'settings', icon: 'bi-gear', label: '系统设置' },
+  ];
+  const studentNav = [
+    { id: 'practice', icon: 'bi-pencil-square', label: '自由刷题' },
+    { id: 'myexams', icon: 'bi-journal-check', label: '我的考试' },
+    { id: 'myprogress', icon: 'bi-graph-up', label: '学习进度' },
+  ];
+  const nav = isAdmin ? adminNav : studentNav;
+  document.getElementById('sidebarNav').innerHTML = nav.map(item =>
+    `<div class="nav-item" data-page="${item.id}" onclick="switchPage('${item.id}')"><i class="bi ${item.icon}"></i><span>${item.label}</span></div>`
+  ).join('');
+  switchPage(isAdmin ? 'dashboard' : 'practice');
+}
+
+function switchPage(page) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const navItem = document.querySelector(`[data-page="${page}"]`);
+  if (navItem) navItem.classList.add('active');
+  const pages = { dashboard: renderDashboard, users: renderUserManagement, questions: renderQuestionBank, exams: renderExamManagement, reports: renderReports, settings: renderSettings, practice: renderPractice, myexams: renderMyExams, myprogress: renderMyProgress };
+  if (pages[page]) pages[page]();
+}
+
+// ==================== DASHBOARD ====================
+async function renderDashboard() {
+  const [usersData, questions, exams, results] = await Promise.all([
+    api('GET', '/api/users'),
+    api('GET', '/api/questions'),
+    api('GET', '/api/exams'),
+    api('GET', '/api/results'),
+  ]);
+  const totalStudents = usersData.filter(u => u.role === 'student').length;
+  const recentResults = results.slice(-20);
+  const avgScore = recentResults.length > 0 ? Math.round(recentResults.reduce((s, r) => s + (r.score / r.totalScore * 100), 0) / recentResults.length) : 0;
+
+  document.getElementById('mainContent').innerHTML = `
+    <h4 class="mb-3">仪表盘</h4>
+    <div class="row g-3 mb-4">
+      <div class="col-md-3"><div class="stat-card d-flex align-items-center gap-3"><div class="icon" style="background:#dbeafe;color:#2563eb"><i class="bi bi-people-fill"></i></div><div><div style="font-size:24px;font-weight:700">${totalStudents}</div><small class="text-muted">学员总数</small></div></div></div>
+      <div class="col-md-3"><div class="stat-card d-flex align-items-center gap-3"><div class="icon" style="background:#f3e8ff;color:#7c3aed"><i class="bi bi-journal-text"></i></div><div><div style="font-size:24px;font-weight:700">${questions.length}</div><small class="text-muted">题库总量</small></div></div></div>
+      <div class="col-md-3"><div class="stat-card d-flex align-items-center gap-3"><div class="icon" style="background:#dcfce7;color:#16a34a"><i class="bi bi-file-earmark-text"></i></div><div><div style="font-size:24px;font-weight:700">${exams.length}</div><small class="text-muted">试卷数量</small></div></div></div>
+      <div class="col-md-3"><div class="stat-card d-flex align-items-center gap-3"><div class="icon" style="background:#fef3c7;color:#d97706"><i class="bi bi-trophy"></i></div><div><div style="font-size:24px;font-weight:700">${avgScore}%</div><small class="text-muted">平均成绩</small></div></div></div>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-6"><div class="card"><div class="card-header">题库分类统计</div><div class="card-body"><canvas id="categoryChart" height="250"></canvas></div></div></div>
+      <div class="col-md-6"><div class="card"><div class="card-header">最近考试记录</div><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th>学员</th><th>试卷</th><th>成绩</th><th>时间</th></tr></thead><tbody>${recentResults.slice().reverse().slice(0,8).map(r => { const st = usersData.find(u=>u.id===r.userId); const ex = exams.find(e=>e.id===r.examId); return `<tr><td>${st?.name||'未知'}</td><td>${ex?.title||'已删除'}</td><td>${r.score}/${r.totalScore} (${Math.round(r.score/r.totalScore*100)}%)</td><td>${new Date(r.completedAt).toLocaleDateString()}</td></tr>`; }).join('')}</tbody></table></div></div></div>
+    </div>`;
+
+  const cats = {};
+  questions.forEach(q => { const c = q.category || '未分类'; cats[c] = (cats[c] || 0) + 1; });
+  const ctx = document.getElementById('categoryChart');
+  if (ctx) new Chart(ctx, { type: 'doughnut', data: { labels: Object.keys(cats), datasets: [{ data: Object.values(cats), backgroundColor: ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6'] }] }, options: { plugins: { legend: { position: 'bottom' } } } });
+}
+
+// ==================== USER MANAGEMENT ====================
+async function renderUserManagement() {
+  const users = await api('GET', '/api/users');
+  document.getElementById('mainContent').innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-3"><h4 class="mb-0">用户管理</h4><div class="d-flex gap-2"><button class="btn btn-outline-primary" onclick="showImportUsersModal()"><i class="bi bi-upload"></i> 导入用户</button><button class="btn btn-primary" onclick="showAddUserModal()"><i class="bi bi-plus-lg"></i> 添加用户</button></div></div>
+    <div class="card"><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th>用户名</th><th>姓名</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${users.map(u => `<tr><td>${u.username}</td><td>${u.name}</td><td><span class="badge ${u.role==='admin'?'bg-primary':'bg-secondary'}">${u.role==='admin'?'管理员':'学员'}</span></td><td>${new Date(u.createdAt).toLocaleDateString()}</td><td>${u.role==='admin'?'<span class="text-muted">内置</span>':`<button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${u.id}')">删除</button>`}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
+function showAddUserModal() {
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal fade show" style="display:block;background:rgba(0,0,0,.5)" onclick="if(event.target===this)closeModal()"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5>添加用户</h5><button class="btn-close" onclick="closeModal()"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">用户名</label><input class="form-control" id="addUserUsername"></div><div class="mb-3"><label class="form-label">密码</label><input class="form-control" type="password" id="addUserPassword"></div><div class="mb-3"><label class="form-label">姓名</label><input class="form-control" id="addUserName"></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="addUser()">确认添加</button></div></div></div></div>`;
+}
+
+async function addUser() {
+  const username = document.getElementById('addUserUsername').value.trim();
+  const password = document.getElementById('addUserPassword').value.trim();
+  const name = document.getElementById('addUserName').value.trim();
+  if (!username || !password || !name) return showToast('请填写完整信息', 'warning');
+  try { await api('POST', '/api/users', { username, password, name }); closeModal(); renderUserManagement(); showToast('用户添加成功', 'success'); }
+  catch(e) { showToast(e.message, 'error'); }
+}
+
+async function deleteUser(id) {
+  if (!confirm('确定删除该用户？其考试记录也将被删除。')) return;
+  try { await api('DELETE', '/api/users/' + id); renderUserManagement(); showToast('用户已删除', 'success'); }
+  catch(e) { showToast(e.message, 'error'); }
+}
+
+function showImportUsersModal() {
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal fade show" style="display:block;background:rgba(0,0,0,.5)" onclick="if(event.target===this)closeModal()"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5>导入用户</h5><button class="btn-close" onclick="closeModal()"></button></div><div class="modal-body"><p class="text-muted">请上传Excel文件，格式：用户名 | 密码 | 姓名（第一行为表头）</p><div class="import-zone" id="userImportZone" onclick="document.getElementById('userImportFile').click()"><i class="bi bi-cloud-upload"></i><p class="mt-2 mb-0">点击上传或拖拽Excel文件</p></div><input type="file" id="userImportFile" accept=".xlsx,.xls" style="display:none" onchange="importUsers(event)"><div id="userImportPreview" class="mt-3"></div></div></div></div></div>`;
+  const z = document.getElementById('userImportZone');
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('dragover'); });
+  z.addEventListener('dragleave', () => z.classList.remove('dragover'));
+  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('dragover'); importUsers({ target: { files: e.dataTransfer.files } }); });
+}
+
+async function importUsers(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const data = await api('POST', '/api/users/import', form);
+    document.getElementById('userImportPreview').innerHTML = `<div class="alert alert-success">共导入 ${data.added} 名用户，跳过 ${data.skipped} 条记录</div><table class="table table-sm"><thead><tr><th>用户名</th><th>密码</th><th>姓名</th><th>状态</th></tr></thead><tbody>${data.preview.map(r=>`<tr><td>${r.username}</td><td>${r.password}</td><td>${r.name}</td><td>${r.status}</td></tr>`).join('')}</tbody></table>`;
+    renderUserManagement();
+  } catch(e) { showToast('导入失败：' + e.message, 'error'); }
+}
+
+// ==================== QUESTION BANK ====================
+let qbFilter = { type: '', category: '', difficulty: '', search: '' };
+
+async function renderQuestionBank() {
+  const params = new URLSearchParams(qbFilter);
+  const [questions, cats] = await Promise.all([
+    api('GET', '/api/questions?' + params),
+    api('GET', '/api/questions/categories'),
+  ]);
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-3"><h4 class="mb-0">题库管理 (${questions.length})</h4><div class="d-flex gap-2"><button class="btn btn-outline-primary" onclick="showImportQuestionsModal()"><i class="bi bi-upload"></i> 导入Excel题库</button><button class="btn btn-outline-success" onclick="exportQuestions()"><i class="bi bi-download"></i> 导出题库</button><button class="btn btn-danger btn-sm" onclick="if(confirm('确定清空所有题目？')){api('DELETE','/api/questions').then(()=>{renderQuestionBank();showToast('题库已清空','success')})}"><i class="bi bi-trash"></i> 清空题库</button></div></div>
+    <div class="d-flex gap-2 flex-wrap mb-3">
+      <select class="form-select" style="width:auto" onchange="qbFilter.type=this.value;renderQuestionBank()"><option value="">全部题型</option><option value="单选题">单选题</option><option value="多选题">多选题</option><option value="判断题">判断题</option></select>
+      <select class="form-select" style="width:auto" onchange="qbFilter.category=this.value;renderQuestionBank()"><option value="">全部分类</option>${cats.map(c=>`<option>${c}</option>`).join('')}</select>
+      <select class="form-select" style="width:auto" onchange="qbFilter.difficulty=this.value;renderQuestionBank()"><option value="">全部难度</option><option value="简单">简单</option><option value="中等">中等</option><option value="困难">困难</option></select>
+      <input class="form-control" style="width:200px" placeholder="搜索题目..." oninput="qbFilter.search=this.value;renderQuestionBank()">
+    </div>
+    <div class="card"><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th style="width:60px">序号</th><th>题目</th><th style="width:80px">题型</th><th style="width:80px">分类</th><th style="width:60px">难度</th><th style="width:60px">分值</th><th style="width:160px">操作</th></tr></thead><tbody>${questions.map((q,i)=>`<tr><td>${i+1}</td><td><div style="max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(q.content)}">${q.content}</div></td><td><span class="question-type type-${q.type==='单选题'?'single':q.type==='多选题'?'multi':'judge'}">${q.type}</span></td><td>${q.category||'-'}</td><td><span class="badge-diff diff-${q.difficulty==='简单'?'easy':q.difficulty==='困难'?'hard':'medium'}">${q.difficulty||'-'}</span></td><td>${q.score}</td><td><button class="btn btn-sm btn-outline-info" onclick="viewQuestionDetail('${q.id}')">详情</button><button class="btn btn-sm btn-outline-warning" onclick="aiAnalyzeQuestion('${q.id}')" title="AI解析"><i class="bi bi-stars"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteQuestion('${q.id}')"><i class="bi bi-trash"></i></button></td></tr>`).join('')}</tbody></table>${questions.length===0?'<p class="text-center text-muted py-4">暂无题目，请导入Excel题库</p>':''}</div></div>`;
+  // Restore filter UI
+  document.querySelectorAll('#mainContent select').forEach(s => {
+    const key = s.onchange?.toString().match(/qbFilter\.(\w+)/)?.[1];
+    if (key) s.value = qbFilter[key] || '';
+  });
+}
+
+function viewQuestionDetail(qid) {
+  const modal = document.getElementById('modalContainer');
+  modal.innerHTML = `<div class="modal fade show" style="display:block;background:rgba(0,0,0,.5)" onclick="if(event.target===this)closeModal()"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5>题目详情</h5><button class="btn-close" onclick="closeModal()"></button></div><div class="modal-body" id="qDetailBody"><p class="text-center text-muted">加载中...</p></div><div class="modal-footer"><button class="btn btn-outline-warning" id="btnAiAnalyze"><i class="bi bi-stars"></i> AI解析</button><button class="btn btn-secondary" onclick="closeModal()">关闭</button></div></div></div></div>`;
+  api('GET', '/api/questions?' + new URLSearchParams({ search: '' })).then(async () => {
+    const questions = await api('GET', '/api/questions?search=');
+    const q = questions.find(x => x.id === qid);
+    if (!q) return;
+    const optLabels = ['A','B','C','D','E','F'];
+    document.getElementById('qDetailBody').innerHTML = `
+      <div class="mb-3"><span class="question-type type-${q.type==='单选题'?'single':q.type==='多选题'?'multi':'judge'}">${q.type}</span> <span class="badge-diff ms-2 diff-${q.difficulty==='简单'?'easy':q.difficulty==='困难'?'hard':'medium'}">${q.difficulty||'未设置'}</span> <span class="ms-2 text-muted">分类: ${q.category||'未分类'} | 分值: ${q.score}分</span></div>
+      <div class="mb-3" style="font-size:16px;font-weight:500">${q.content}</div>
+      ${(q.options||[]).length>0 ? (q.options||[]).map((o,i)=>`<div class="option-item ${q.answer.includes(optLabels[i])?'correct':''}"><b>${optLabels[i]}.</b> ${o} ${q.answer.includes(optLabels[i])?'<span class="correct-answer ms-2"><i class="bi bi-check-circle-fill"></i> 正确答案</span>':''}</div>`).join('') : `<p><b>答案：</b>${q.answer}</p>`}
+      ${q.analysis ? `<div class="alert alert-info mt-3"><b><i class="bi bi-info-circle"></i> 解析：</b>${q.analysis}</div>` : '<p class="text-muted mt-3">暂无解析</p>'}`;
+    document.getElementById('btnAiAnalyze').onclick = () => { closeModal(); aiAnalyzeQuestion(qid); };
+  });
+}
+
+async function deleteQuestion(qid) { if(!confirm('确定删除？'))return; await api('DELETE','/api/questions/'+qid); renderQuestionBank(); showToast('已删除','success'); }
+
+function showImportQuestionsModal() {
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal fade show" style="display:block;background:rgba(0,0,0,.5)" onclick="if(event.target===this)closeModal()"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5>导入Excel题库</h5><button class="btn-close" onclick="closeModal()"></button></div><div class="modal-body"><p class="text-muted">支持模板：序号|题型|题目内容|选项A|选项B|选项C|选项D|选项E|选项F|答案|分值|分类|难度|解析</p><div class="import-zone" id="qImportZone" onclick="document.getElementById('qImportFile').click()"><i class="bi bi-cloud-upload"></i><p class="mt-2 mb-0">点击上传或拖拽Excel文件</p><small class="text-muted">支持 .xlsx / .xls</small></div><input type="file" id="qImportFile" accept=".xlsx,.xls" style="display:none" onchange="importQuestions(event)"><div id="qImportPreview" class="mt-3"></div></div></div></div></div>`;
+  const z = document.getElementById('qImportZone');
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('dragover'); });
+  z.addEventListener('dragleave', () => z.classList.remove('dragover'));
+  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('dragover'); importQuestions({ target: { files: e.dataTransfer.files } }); });
+}
+
+async function importQuestions(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const data = await api('POST', '/api/questions/import', form);
+    document.getElementById('qImportPreview').innerHTML = `<div class="alert alert-success">成功导入 ${data.added} 道题目！</div>`;
+    renderQuestionBank();
+  } catch(e) { showToast('导入失败：' + e.message, 'error'); }
+}
+
+function exportQuestions() {
+  window.open('/api/questions/export', '_blank');
+  showToast('题库导出成功', 'success');
+}
+
+// ==================== AI ANALYSIS ====================
+async function aiAnalyzeQuestion(qid) {
+  showToast('正在进行AI解析...', 'info');
+  try {
+    const data = await api('PUT', '/api/questions/' + qid + '/analyze');
+    renderQuestionBank();
+    showToast('AI解析完成！', 'success');
+  } catch(e) { showToast('AI解析失败：' + e.message, 'error'); }
+}
+
+// ==================== EXAM MANAGEMENT ====================
+async function renderExamManagement() {
+  const [exams, questions] = await Promise.all([api('GET', '/api/exams'), api('GET', '/api/questions')]);
+  document.getElementById('mainContent').innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-3"><h4 class="mb-0">试卷管理</h4><button class="btn btn-primary" onclick="showCreateExamModal()"><i class="bi bi-plus-lg"></i> 创建试卷</button></div>
+    <div class="card"><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th>试卷名称</th><th>题目数量</th><th>总分</th><th>限时(分钟)</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${exams.map(ex=>{const total=ex.questions.reduce((s,qid)=>{const q=questions.find(x=>x.id===qid);return s+(q?q.score:0);},0);return`<tr><td>${ex.title}</td><td>${ex.questions.length}题</td><td>${total}分</td><td>${ex.timeLimit||'不限'}</td><td>${new Date(ex.createdAt).toLocaleDateString()}</td><td><button class="btn btn-sm btn-outline-info" onclick="previewExam('${ex.id}')">预览</button><button class="btn btn-sm btn-outline-danger" onclick="deleteExam('${ex.id}')">删除</button></td></tr>`;}).join('')}</tbody></table>${exams.length===0?'<p class="text-center text-muted py-4">暂无试卷</p>':''}</div></div>`;
+}
+
+let examSelectedQuestions = [];
+
+async function showCreateExamModal() {
+  const [questions, cats] = await Promise.all([api('GET', '/api/questions'), api('GET', '/api/questions/categories')]);
+  examSelectedQuestions = [];
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="modal fade show" style="display:block;background:rgba(0,0,0,.5)" onclick="if(event.target===this)closeModal()"><div class="modal-dialog modal-xl"><div class="modal-content"><div class="modal-header"><h5>创建试卷</h5><button class="btn-close" onclick="closeModal()"></button></div><div class="modal-body"><div class="row g-3 mb-3"><div class="col-md-6"><label class="form-label">试卷名称</label><input class="form-control" id="examTitle" placeholder="如：通信技术测试卷"></div><div class="col-md-3"><label class="form-label">限时(分钟)</label><input class="form-control" type="number" id="examTimeLimit" value="60" min="1"></div><div class="col-md-3"><label class="form-label">组卷方式</label><select class="form-select" id="examGenMethod" onchange="toggleExamGenMethod()"><option value="manual">手动选题</option><option value="auto">自动随机组卷</option></select></div></div><div id="examAutoOptions" style="display:none" class="row g-3 mb-3"><div class="col-md-4"><label class="form-label">单选题数量</label><input class="form-control" type="number" id="autoSingleCount" value="10" min="0"></div><div class="col-md-4"><label class="form-label">多选题数量</label><input class="form-control" type="number" id="autoMultiCount" value="5" min="0"></div><div class="col-md-4"><label class="form-label">判断题数量</label><input class="form-control" type="number" id="autoJudgeCount" value="5" min="0"></div><div class="col-md-4"><label class="form-label">分类筛选</label><select class="form-select" id="autoCategory"><option value="">不限制</option>${cats.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="col-md-4"><label class="form-label">难度筛选</label><select class="form-select" id="autoDifficulty"><option value="">不限制</option><option>简单</option><option>中等</option><option>困难</option></select></div></div><div id="examManualSelect"><div class="d-flex gap-2 mb-3"><select class="form-select" style="width:auto" id="examQFilterType" onchange="renderExamQuestionSelector()"><option value="">全部题型</option><option>单选题</option><option>多选题</option><option>判断题</option></select><select class="form-select" style="width:auto" id="examQFilterCat" onchange="renderExamQuestionSelector()"><option value="">全部分类</option>${cats.map(c=>`<option>${c}</option>`).join('')}</select><input class="form-control" style="width:200px" placeholder="搜索..." id="examQSearch" oninput="renderExamQuestionSelector()"></div><div id="examQuestionList" style="max-height:400px;overflow-y:auto"></div></div><div class="mt-3"><b>已选：<span id="selectedCount">0</span>题</b></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="createExam()">创建试卷</button></div></div></div></div>`;
+  renderExamQuestionSelector();
+}
+
+function toggleExamGenMethod() {
+  const m = document.getElementById('examGenMethod').value;
+  document.getElementById('examAutoOptions').style.display = m === 'auto' ? 'flex' : 'none';
+  document.getElementById('examManualSelect').style.display = m === 'manual' ? 'block' : 'none';
+}
+
+async function renderExamQuestionSelector() {
+  const questions = await api('GET', '/api/questions');
+  const ft = document.getElementById('examQFilterType')?.value || '';
+  const fc = document.getElementById('examQFilterCat')?.value || '';
+  const fs = (document.getElementById('examQSearch')?.value || '').toLowerCase();
+  let filtered = questions;
+  if (ft) filtered = filtered.filter(q => q.type === ft);
+  if (fc) filtered = filtered.filter(q => (q.category||'未分类') === fc);
+  if (fs) filtered = filtered.filter(q => q.content.toLowerCase().includes(fs));
+  const el = document.getElementById('examQuestionList');
+  if (!el) return;
+  el.innerHTML = filtered.map(q => `<div class="card mb-2 ${examSelectedQuestions.includes(q.id)?'border-primary':''}"><div class="card-body py-2 d-flex justify-content-between align-items-center"><div class="flex-grow-1"><span class="question-type type-${q.type==='单选题'?'single':q.type==='多选题'?'multi':'judge'} me-2">${q.type}</span><span class="badge-diff diff-${q.difficulty==='简单'?'easy':q.difficulty==='困难'?'hard':'medium'} me-2">${q.difficulty||'-'}</span>${q.content}</div><button class="btn btn-sm ${examSelectedQuestions.includes(q.id)?'btn-danger':'btn-outline-primary'} ms-2" onclick="toggleExamQuestion('${q.id}')" style="min-width:70px">${examSelectedQuestions.includes(q.id)?'移除':'选择'}</button></div></div>`).join('');
+  const sc = document.getElementById('selectedCount');
+  if (sc) sc.textContent = examSelectedQuestions.length;
+}
+
+function toggleExamQuestion(qid) {
+  const idx = examSelectedQuestions.indexOf(qid);
+  if (idx >= 0) examSelectedQuestions.splice(idx, 1); else examSelectedQuestions.push(qid);
+  renderExamQuestionSelector();
+}
+
+async function createExam() {
+  const title = document.getElementById('examTitle').value.trim();
+  const timeLimit = parseInt(document.getElementById('examTimeLimit').value) || 60;
+  const method = document.getElementById('examGenMethod').value;
+  if (!title) return showToast('请输入试卷名称', 'warning');
+  let body = { title, timeLimit, method };
+  if (method === 'auto') {
+    body.autoConfig = {
+      singleCount: parseInt(document.getElementById('autoSingleCount').value) || 0,
+      multiCount: parseInt(document.getElementById('autoMultiCount').value) || 0,
+      judgeCount: parseInt(document.getElementById('autoJudgeCount').value) || 0,
+      category: document.getElementById('autoCategory').value,
+      difficulty: document.getElementById('autoDifficulty').value,
+    };
+  } else {
+    body.questions = examSelectedQuestions;
+  }
+  try {
+    await api('POST', '/api/exams', body);
+    examSelectedQuestions = [];
+    closeModal();
+    renderExamManagement();
+    showToast('试卷创建成功！', 'success');
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function previewExam(eid) {
+  const [exams, questions] = await Promise.all([api('GET', '/api/exams'), api('GET', '/api/questions')]);
+  const ex = exams.find(e => e.id === eid);
+  if (!ex) return;
+  const optL = ['A','B','C','D','E','F'];
+  const total = ex.questions.reduce((s,qid)=>{const q=questions.find(x=>x.id===qid);return s+(q?q.score:0);},0);
+  document.getElementById('modalContainer').innerHTML = `<div class="modal fade show" style="display:block;background:rgba(0,0,0,.5)" onclick="if(event.target===this)closeModal()"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5>${ex.title}</h5><button class="btn-close" onclick="closeModal()"></button></div><div class="modal-body"><p>共${ex.questions.length}题|总分${total}分|限时${ex.timeLimit}分钟</p>${ex.questions.map((qid,i)=>{const q=questions.find(x=>x.id===qid);if(!q)return'';return`<div class="mb-3 p-3 border rounded"><b>${i+1}.</b> <span class="question-type type-${q.type==='单选题'?'single':q.type==='多选题'?'multi':'judge'}">${q.type}</span> (${q.score}分) ${q.content}${(q.options||[]).map((o,j)=>`<div class="option-item ${q.answer.includes(optL[j])?'correct':''}"><b>${optL[j]}.</b> ${o}</div>`).join('')}<div class="mt-2"><b>答案：</b><span class="correct-answer">${q.answer}</span></div></div>`;}).join('')}</div></div></div></div>`;
+}
+
+async function deleteExam(eid) { if(!confirm('确定删除？'))return; await api('DELETE','/api/exams/'+eid); renderExamManagement(); showToast('已删除','success'); }
+
+// ==================== REPORTS ====================
+async function renderReports() {
+  const [users, results] = await Promise.all([api('GET', '/api/users'), api('GET', '/api/results')]);
+  const students = users.filter(u => u.role === 'student');
+  const exams = await api('GET', '/api/exams');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-3"><h4 class="mb-0">成绩报表</h4><div class="d-flex gap-2"><select class="form-select" style="width:auto" id="reportStudent" onchange="renderReports()"><option value="">全部学员</option>${students.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}</select><button class="btn btn-outline-success" onclick="exportReports()"><i class="bi bi-download"></i> 导出Excel</button></div></div>
+    <div class="card"><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th>学员</th><th>试卷</th><th>得分</th><th>总分</th><th>正确率</th><th>完成时间</th></tr></thead><tbody id="reportTableBody"></tbody></table></div></div>`;
+
+  const fs = document.getElementById('reportStudent')?.value || '';
+  let filtered = results.slice().reverse();
+  if (fs) filtered = filtered.filter(r => r.userId === fs);
+  document.getElementById('reportTableBody').innerHTML = filtered.map(r => {
+    const st = users.find(u=>u.id===r.userId);
+    const ex = exams.find(e=>e.id===r.examId);
+    const pct = Math.round(r.score/r.totalScore*100);
+    return `<tr><td>${st?.name||'未知'}</td><td>${ex?.title||'已删除'}</td><td>${r.score}</td><td>${r.totalScore}</td><td><span class="badge ${pct>=60?'bg-success':'bg-danger'}">${pct}%</span></td><td>${new Date(r.completedAt).toLocaleString()}</td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">暂无记录</td></tr>';
+}
+
+async function exportReports() {
+  const fs = document.getElementById('reportStudent')?.value || '';
+  const body = fs ? { userId: fs } : {};
+  // Use fetch to download
+  const res = await fetch('/api/results/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '成绩报表.xlsx';
+  a.click();
+  showToast('导出成功', 'success');
+}
+
+// ==================== SETTINGS ====================
+async function renderSettings() {
+  const cfg = await api('GET', '/api/config/ai');
+  document.getElementById('mainContent').innerHTML = `
+    <h4 class="mb-3">系统设置</h4>
+    <div class="card mb-3"><div class="card-header">AI解析配置</div><div class="card-body"><p class="text-muted">配置AI API后，可对题目进行智能解析。支持OpenAI兼容接口。</p><div class="mb-3"><label class="form-label">API端点</label><input class="form-control" id="aiEndpoint" value="${cfg.endpoint||'https://api.openai.com/v1/chat/completions'}"></div><div class="mb-3"><label class="form-label">API密钥</label><input class="form-control" type="password" id="aiApiKey" placeholder="${cfg.hasKey?'已设置(不显示)':'sk-...'}"></div><div class="mb-3"><label class="form-label">模型</label><input class="form-control" id="aiModel" value="${cfg.model||'gpt-3.5-turbo'}"></div><button class="btn btn-primary" onclick="saveAIConfig()">保存配置</button><button class="btn btn-outline-warning ms-2" onclick="batchAiAnalyze()"><i class="bi bi-stars"></i> 批量AI解析所有题目</button></div></div>
+    <div class="card"><div class="card-header">数据管理</div><div class="card-body"><p class="text-muted">导出或清空系统数据。清空操作不可恢复！</p><button class="btn btn-outline-primary" onclick="window.open('/api/data/export','_blank');showToast('导出成功','success')"><i class="bi bi-download"></i> 导出全部数据</button><button class="btn btn-outline-danger ms-2" onclick="if(confirm('确定清空所有数据？不可恢复！')){fetch('/api/data/export').then(()=>{location.reload()})}"><i class="bi bi-trash"></i> 清空全部数据</button></div></div>`;
+}
+
+async function saveAIConfig() {
+  await api('PUT', '/api/config/ai', {
+    endpoint: document.getElementById('aiEndpoint').value.trim(),
+    apiKey: document.getElementById('aiApiKey').value.trim() || undefined,
+    model: document.getElementById('aiModel').value.trim(),
+  });
+  showToast('AI配置已保存', 'success');
+}
+
+async function batchAiAnalyze() {
+  showToast('开始批量AI解析...', 'info');
+  try {
+    const data = await api('POST', '/api/questions/batch-analyze');
+    showToast(`批量解析完成，共解析 ${data.analyzed} 道题目`, 'success');
+    renderQuestionBank();
+  } catch(e) { showToast('解析失败：'+e.message, 'error'); }
+}
+
+// ==================== STUDENT: PRACTICE ====================
+let practiceQuestions = [], practiceIndex = 0, practiceAnswers = {};
+
+async function renderPractice() {
+  const cats = await api('GET', '/api/questions/categories');
+  document.getElementById('mainContent').innerHTML = `
+    <h4 class="mb-3">自由刷题</h4>
+    <div class="card mb-3"><div class="card-body"><div class="row g-3 align-items-end"><div class="col-md-3"><label class="form-label">题型</label><select class="form-select" id="pracType"><option value="">全部</option><option>单选题</option><option>多选题</option><option>判断题</option></select></div><div class="col-md-3"><label class="form-label">分类</label><select class="form-select" id="pracCategory"><option value="">全部</option>${cats.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="col-md-2"><label class="form-label">难度</label><select class="form-select" id="pracDifficulty"><option value="">全部</option><option>简单</option><option>中等</option><option>困难</option></select></div><div class="col-md-2"><label class="form-label">数量</label><input class="form-control" type="number" id="pracCount" value="10" min="1" max="100"></div><div class="col-md-2"><button class="btn btn-primary w-100" onclick="startPractice()"><i class="bi bi-play-fill"></i> 开始刷题</button></div></div></div></div>
+    <div id="practiceArea"><p class="text-center text-muted py-5">选择条件后点击"开始刷题"</p></div>`;
+}
+
+async function startPractice() {
+  const type = document.getElementById('pracType').value;
+  const cat = document.getElementById('pracCategory').value;
+  const diff = document.getElementById('pracDifficulty').value;
+  const count = parseInt(document.getElementById('pracCount').value) || 10;
+  const params = new URLSearchParams({ type, category: cat, difficulty: diff });
+  let pool = await api('GET', '/api/questions?' + params);
+  if (pool.length === 0) return showToast('没有符合条件的题目', 'warning');
+  for (let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  practiceQuestions = pool.slice(0, count);
+  practiceIndex = 0;
+  practiceAnswers = {};
+  renderPracticeQuestion();
+}
+
+function renderPracticeQuestion() {
+  if (practiceIndex >= practiceQuestions.length) { finishPractice(); return; }
+  const q = practiceQuestions[practiceIndex];
+  if (!q) { practiceIndex++; renderPracticeQuestion(); return; }
+  const optL = ['A','B','C','D','E','F'];
+  const saved = practiceAnswers[q.id] || '';
+  document.getElementById('practiceArea').innerHTML = `
+    <div class="card"><div class="card-header d-flex justify-content-between"><span>第${practiceIndex+1}/${practiceQuestions.length}题 <span class="question-type type-${q.type==='单选题'?'single':q.type==='多选题'?'multi':'judge'}">${q.type}</span></span><span class="badge-diff diff-${q.difficulty==='简单'?'easy':q.difficulty==='困难'?'hard':'medium'}">${q.difficulty||'-'}</span></div><div class="card-body"><h5 class="mb-3">${q.content}</h5><div class="mb-3">${(q.options||[]).length>0 ? (q.options||[]).map((o,j)=>`<div class="option-item ${saved.includes(optL[j])?'selected':''}" onclick="selectPracticeOption('${q.id}','${optL[j]}','${q.type}')" id="opt_${q.id}_${optL[j]}"><b>${optL[j]}.</b> ${o}</div>`).join('') : `<div class="option-item ${saved==='正确'?'selected':''}" onclick="selectPracticeOption('${q.id}','正确','${q.type}')"><b>正确</b></div><div class="option-item ${saved==='错误'?'selected':''}" onclick="selectPracticeOption('${q.id}','错误','${q.type}')"><b>错误</b></div>`}</div><div class="d-flex justify-content-between"><button class="btn btn-outline-secondary" onclick="prevPracticeQuestion()" ${practiceIndex===0?'disabled':''}>上一题</button><button class="btn btn-outline-info" onclick="showPracticeHint('${q.id}')"><i class="bi bi-lightbulb"></i> 提示</button><button class="btn btn-primary" onclick="nextPracticeQuestion()">${practiceIndex===practiceQuestions.length-1?'提交':'下一题'}</button></div><div id="hint_${q.id}" class="mt-3" style="display:none"></div></div></div>`;
+}
+
+function selectPracticeOption(qid, option, type) {
+  const saved = practiceAnswers[qid] || '';
+  let na;
+  if (type === '多选题') { const arr=saved.split(''); const idx=arr.indexOf(option); if(idx>=0)arr.splice(idx,1);else arr.push(option); na=arr.sort().join(''); }
+  else { na = saved===option ? '' : option; }
+  practiceAnswers[qid] = na;
+  renderPracticeQuestion();
+}
+
+function nextPracticeQuestion() { practiceIndex++; renderPracticeQuestion(); }
+function prevPracticeQuestion() { if(practiceIndex>0){practiceIndex--;renderPracticeQuestion();} }
+
+function showPracticeHint(qid) {
+  const q = practiceQuestions.find(x => x.id === qid);
+  const el = document.getElementById('hint_' + qid);
+  if (el) { el.style.display='block'; el.innerHTML = q?.analysis ? `<div class="alert alert-info">${q.analysis}</div>` : '<div class="alert alert-warning">暂无解析</div>'; }
+}
+
+async function finishPractice() {
+  let correct = 0;
+  const details = practiceQuestions.map(q => {
+    const ua = practiceAnswers[q.id] || '';
+    const isOk = ua === q.answer;
+    if (isOk) correct++;
+    return { q, userAnswer: ua, isCorrect: isOk };
+  });
+  // Save to server
+  try {
+    await api('POST', '/api/practice', { userId: currentUser.id, records: details.map(d => ({ questionId: d.q.id, userAnswer: d.userAnswer, isCorrect: d.isCorrect })) });
+  } catch(e) {}
+
+  document.getElementById('practiceArea').innerHTML = `
+    <div class="card"><div class="card-header text-center"><h4>练习完成！</h4></div><div class="card-body text-center"><div style="font-size:48px;font-weight:700;color:${correct/practiceQuestions.length>=0.6?'#16a34a':'#dc2626'}">${correct}/${practiceQuestions.length}</div><p>正确率 ${Math.round(correct/practiceQuestions.length*100)}%</p></div></div>
+    <div class="card mt-3"><div class="card-header">答题详情</div><div class="card-body">${details.map((d,i)=>`<div class="mb-3 p-3 border rounded ${d.isCorrect?'border-success':'border-danger'}"><div><b>${i+1}.</b> ${d.q.content} ${d.isCorrect?'<span class="correct-answer"><i class="bi bi-check-circle-fill"></i> 正确</span>':'<span class="wrong-answer"><i class="bi bi-x-circle-fill"></i> 错误</span>'}</div><div class="mt-1">你的答案：<b class="${d.isCorrect?'correct-answer':'wrong-answer'}">${d.userAnswer||'未作答'}</b> | 正确答案：<b class="correct-answer">${d.q.answer}</b></div>${d.q.analysis?`<div class="alert alert-info mt-2 mb-0"><b>解析：</b>${d.q.analysis}</div>`:''}</div>`).join('')}</div></div>
+    <button class="btn btn-primary w-100 mt-3" onclick="renderPractice()">重新刷题</button>`;
+}
+
+// ==================== STUDENT: MY EXAMS ====================
+async function renderMyExams() {
+  const [exams, results, questions] = await Promise.all([api('GET','/api/exams'), api('GET','/api/results?userId='+currentUser.id), api('GET','/api/questions')]);
+  const completedIds = results.map(r => r.examId);
+  const available = exams.filter(e => !completedIds.includes(e.id));
+  const completed = results.reverse();
+
+  document.getElementById('mainContent').innerHTML = `
+    <h4 class="mb-3">我的考试</h4>
+    ${available.length>0?`<div class="card mb-4"><div class="card-header">待完成</div><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th>试卷</th><th>题目数</th><th>限时</th><th>操作</th></tr></thead><tbody>${available.map(ex=>{const total=ex.questions.reduce((s,qid)=>{const q=questions.find(x=>x.id===qid);return s+(q?q.score:0);},0);return`<tr><td>${ex.title}</td><td>${ex.questions.length}题(${total}分)</td><td>${ex.timeLimit}分钟</td><td><button class="btn btn-sm btn-primary" onclick="startExam('${ex.id}')">开始考试</button></td></tr>`;}).join('')}</tbody></table></div></div>`:'<p class="text-muted">暂无可用考试</p>'}
+    <div class="card"><div class="card-header">已完成</div><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th>试卷</th><th>得分</th><th>正确率</th><th>时间</th></tr></thead><tbody>${completed.map(r=>{const ex=exams.find(e=>e.id===r.examId);const pct=Math.round(r.score/r.totalScore*100);return`<tr><td>${ex?.title||'已删除'}</td><td>${r.score}/${r.totalScore}</td><td><span class="badge ${pct>=60?'bg-success':'bg-danger'}">${pct}%</span></td><td>${new Date(r.completedAt).toLocaleString()}</td></tr>`;}).join('')||'<tr><td colspan="4" class="text-center text-muted py-4">暂无记录</td></tr>'}</tbody></table></div></div>`;
+}
+
+let examSession = null, examTimer = null;
+
+async function startExam(eid) {
+  const [exams, questions] = await Promise.all([api('GET','/api/exams'), api('GET','/api/questions')]);
+  const ex = exams.find(e => e.id === eid);
+  if (!ex) return;
+  if (!confirm(`即将开始"${ex.title}"，共${ex.questions.length}题，限时${ex.timeLimit}分钟。确认？`)) return;
+  examSession = { examId: eid, answers: {}, startTime: Date.now(), timeLimit: ex.timeLimit*60, questionIndex: 0, exam: ex, questions };
+  renderExamQuestion();
+}
+
+function renderExamQuestion() {
+  if (!examSession) { renderMyExams(); return; }
+  const { exam, questions, questionIndex, timeLimit, startTime, answers } = examSession;
+  if (questionIndex >= exam.questions.length) { submitExam(); return; }
+  const q = questions.find(x => x.id === exam.questions[questionIndex]);
+  if (!q) { examSession.questionIndex++; renderExamQuestion(); return; }
+
+  const optL = ['A','B','C','D','E','F'];
+  const saved = answers[q.id] || '';
+  const remaining = timeLimit - Math.floor((Date.now()-startTime)/1000);
+  const mins = Math.floor(Math.max(0,remaining)/60);
+  const secs = Math.max(0,remaining)%60;
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="d-flex justify-content-between align-items-center mb-3"><h4 class="mb-0">${exam.title}</h4><div class="timer" id="examTimer">${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}</div></div>
+    <div class="progress mb-3" style="height:6px"><div class="progress-bar" style="width:${(questionIndex/exam.questions.length)*100}%"></div></div>
+    <div class="card"><div class="card-header d-flex justify-content-between"><span>第${questionIndex+1}/${exam.questions.length}题 <span class="question-type type-${q.type==='单选题'?'single':q.type==='多选题'?'multi':'judge'}">${q.type}</span></span><span>${q.score}分</span></div><div class="card-body"><h5 class="mb-3">${q.content}</h5><div class="mb-3">${(q.options||[]).length>0?(q.options||[]).map((o,j)=>`<div class="option-item ${saved.includes(optL[j])?'selected':''}" onclick="selectExamOption('${q.id}','${optL[j]}','${q.type}')"><b>${optL[j]}.</b> ${o}</div>`).join(''):`<div class="option-item ${saved==='正确'?'selected':''}" onclick="selectExamOption('${q.id}','正确','${q.type}')"><b>正确</b></div><div class="option-item ${saved==='错误'?'selected':''}" onclick="selectExamOption('${q.id}','错误','${q.type}')"><b>错误</b></div>`}</div><div class="d-flex justify-content-between"><button class="btn btn-outline-secondary" onclick="examPrevQuestion()" ${questionIndex===0?'disabled':''}>上一题</button><div><span class="me-3 text-muted">已答：${Object.keys(answers).length}/${exam.questions.length}</span><button class="btn btn-outline-danger" onclick="if(confirm('确定交卷？'))submitExam()">交卷</button><button class="btn btn-primary ms-2" onclick="examNextQuestion()">${questionIndex===exam.questions.length-1?'交卷':'下一题'}</button></div></div></div></div>`;
+
+  if (examTimer) clearInterval(examTimer);
+  examTimer = setInterval(() => {
+    const elapsed = Math.floor((Date.now()-examSession.startTime)/1000);
+    const rem = examSession.timeLimit - elapsed;
+    if (rem <= 0) { clearInterval(examTimer); submitExam(); return; }
+    const m=Math.floor(rem/60), s=rem%60;
+    const tel=document.getElementById('examTimer'); if(tel)tel.textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }, 1000);
+}
+
+function selectExamOption(qid, option, type) {
+  const saved = examSession.answers[qid] || '';
+  let na;
+  if (type==='多选题'){const arr=saved.split('');const idx=arr.indexOf(option);if(idx>=0)arr.splice(idx,1);else arr.push(option);na=arr.sort().join('');}
+  else {na=saved===option?'':option;}
+  examSession.answers[qid]=na;
+  renderExamQuestion();
+}
+
+function examNextQuestion(){examSession.questionIndex++;renderExamQuestion();}
+function examPrevQuestion(){if(examSession.questionIndex>0){examSession.questionIndex--;renderExamQuestion();}}
+
+async function submitExam() {
+  if (examTimer) clearInterval(examTimer);
+  try {
+    const data = await api('POST', '/api/results', { userId: currentUser.id, examId: examSession.examId, answers: examSession.answers });
+    const pct = Math.round(data.score/data.totalScore*100);
+    document.getElementById('mainContent').innerHTML = `<div class="card text-center"><div class="card-body py-5"><i class="bi bi-check-circle-fill" style="font-size:64px;color:${pct>=60?'#16a34a':'#dc2626'}"></i><h3 class="mt-3">考试完成！</h3><div style="font-size:48px;font-weight:700;color:${pct>=60?'#16a34a':'#dc2626'}">${data.score}/${data.totalScore}</div><p>正确率 ${pct}%</p><button class="btn btn-primary" onclick="renderMyExams()">返回</button></div></div>`;
+  } catch(e) { showToast('提交失败：'+e.message, 'error'); }
+  examSession = null;
+}
+
+// ==================== STUDENT: PROGRESS ====================
+async function renderMyProgress() {
+  const [results, practice, allQuestions] = await Promise.all([
+    api('GET', '/api/results?userId='+currentUser.id),
+    api('GET', '/api/practice?userId='+currentUser.id),
+    api('GET', '/api/questions'),
+  ]);
+  const myResults = results.reverse();
+  const correctP = practice.filter(r=>r.isCorrect).length;
+  const rate = practice.length>0?Math.round(correctP/practice.length*100):0;
+
+  document.getElementById('mainContent').innerHTML = `
+    <h4 class="mb-3">学习进度</h4>
+    <div class="row g-3 mb-4">
+      <div class="col-md-4"><div class="stat-card text-center"><div style="font-size:36px;font-weight:700;color:var(--primary)">${practice.length}</div><small class="text-muted">练习题目数</small></div></div>
+      <div class="col-md-4"><div class="stat-card text-center"><div style="font-size:36px;font-weight:700;color:#16a34a">${rate}%</div><small class="text-muted">练习正确率</small></div></div>
+      <div class="col-md-4"><div class="stat-card text-center"><div style="font-size:36px;font-weight:700;color:#7c3aed">${myResults.length}</div><small class="text-muted">完成考试数</small></div></div>
+    </div>
+    <div class="row g-3 mb-4">
+      <div class="col-md-6"><div class="card"><div class="card-header">考试趋势</div><div class="card-body"><canvas id="examTrendChart" height="250"></canvas></div></div></div>
+      <div class="col-md-6"><div class="card"><div class="card-header">分类练习统计</div><div class="card-body"><canvas id="categoryProgressChart" height="250"></canvas></div></div></div>
+    </div>
+    <div class="card"><div class="card-header">考试记录</div><div class="card-body p-0"><table class="table table-hover mb-0"><thead><tr><th>试卷</th><th>得分</th><th>正确率</th><th>时间</th></tr></thead><tbody>${myResults.map(r=>{const pct=Math.round(r.score/r.totalScore*100);return`<tr><td>${r.examId||'已删除'}</td><td>${r.score}/${r.totalScore}</td><td><span class="badge ${pct>=60?'bg-success':'bg-danger'}">${pct}%</span></td><td>${new Date(r.completedAt).toLocaleString()}</td></tr>`;}).join('')||'<tr><td colspan="4" class="text-center text-muted py-4">暂无记录</td></tr>'}</tbody></table></div></div>`;
+
+  if (myResults.length>0) {
+    const ctx1=document.getElementById('examTrendChart');
+    if(ctx1)new Chart(ctx1,{type:'line',data:{labels:myResults.map((r,i)=>`第${i+1}次`),datasets:[{label:'正确率(%)',data:myResults.map(r=>Math.round(r.score/r.totalScore*100)),borderColor:'#6366f1',tension:.3}]},options:{scales:{y:{min:0,max:100}}}});
+  }
+  const catStats={};
+  practice.forEach(p=>{const q=allQuestions.find(x=>x.id===p.questionId);const c=q?.category||'未分类';if(!catStats[c])catStats[c]={total:0,correct:0};catStats[c].total++;if(p.isCorrect)catStats[c].correct++;});
+  const ctx2=document.getElementById('categoryProgressChart');
+  if(ctx2&&Object.keys(catStats).length>0)new Chart(ctx2,{type:'bar',data:{labels:Object.keys(catStats),datasets:[{label:'正确率(%)',data:Object.values(catStats).map(s=>Math.round(s.correct/s.total*100)),backgroundColor:'#6366f1'}]},options:{scales:{y:{min:0,max:100}}}});
+}
+
+// ==================== UTILS ====================
+function closeModal(){document.getElementById('modalContainer').innerHTML='';}
+function escHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function showToast(msg,type){
+  const icons={success:'check-circle-fill',error:'x-circle-fill',warning:'exclamation-triangle-fill',info:'info-circle-fill'};
+  const colors={success:'#16a34a',error:'#dc2626',warning:'#d97706',info:'#2563eb'};
+  const t=document.createElement('div');
+  t.className=`alert alert-${type==='error'?'danger':type==='info'?'primary':type} shadow`;
+  t.style.cssText='min-width:300px;animation:slideIn .3s ease';
+  t.innerHTML=`<i class="bi bi-${icons[type]} me-2"></i>${msg}`;
+  document.getElementById('toastContainer').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300);},2500);
+}
+const st=document.createElement('style');
+st.textContent='@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}';
+document.head.appendChild(st);
+</script>
+</body>
+</html>
