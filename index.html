@@ -488,8 +488,8 @@ async function testAIConfig() {
     } else {
       // 显示详细错误信息
       let errorMsg = data.error || '连接失败';
-      if (data.debug) {
-        errorMsg += `\n状态码: ${data.debug.responseStatus}\n端点: ${data.debug.endpoint}`;
+      if (data.details) {
+        errorMsg += '\n详情: ' + data.details;
       }
       showToast(errorMsg, 'error');
     }
