@@ -484,9 +484,14 @@ async function testAIConfig() {
       model: model
     });
     if (data.success) {
-      showToast(`连接成功！模型：${data.model}`, 'success');
+      showToast(data.message || '连接成功！', 'success');
     } else {
-      showToast(data.error || '连接失败', 'error');
+      // 显示详细错误信息
+      let errorMsg = data.error || '连接失败';
+      if (data.debug) {
+        errorMsg += `\n状态码: ${data.debug.responseStatus}\n端点: ${data.debug.endpoint}`;
+      }
+      showToast(errorMsg, 'error');
     }
   } catch(e) {
     showToast('测试失败：' + e.message, 'error');

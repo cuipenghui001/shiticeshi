@@ -435,32 +435,119 @@ app.get('/api/config/ai', (req, res) => {
 
 // Test AI connection
 app.post('/api/config/ai/test', async (req, res) => {
-  const db = readData();
   const apiKey = req.body.apiKey;
   const endpoint = req.body.endpoint || 'https://api.openai.com/v1/chat/completions';
   const model = req.body.model || 'gpt-3.5-turbo';
 
   if (!apiKey) return res.status(400).json({ error: '请提供 API Key' });
+  if (!endpoint) return res.status(400).json({ error: '请提供 API 端点' });
 
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: 'user', content: '你好' }],
-        max_tokens: 10
-      })
-    });
+    // 尝试不同的请求方式
+    let response, result;
 
-    if (response.ok) {
-      const result = await response.json();
-      res.json({ success: true, message: '连接成功', model: model });
-    } else {
-      res.status(401).json({ success: false, error: '连接失败，请检查 API Key 是否正确' });
+    // 尝试 1: 标准 OpenAI 格式
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: '你好' }],
+          max_tokens: 10
+        }),
+        timeout: 10000
+      });
+
+      if (response.ok) {
+        result = await response.json();
+        return res.json({
+          success: true,
+          message: '连接成功！',
+          model: model,
+          response: JSON.stringify(result).substring(0, 200)
+        });
+      }
+    } catch(e) {
+      // 继续尝试其他方式
     }
+
+    // 尝试 2: 使用 X-Api-Key 头（部分服务）
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': apiKey
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: '你好' }],
+          max_tokens: 10
+        }),
+        timeout: 10000
+      });
+
+      if (response.ok) {
+        result = await response.json();
+        return res.json({
+          success: true,
+          message: '连接成功！(使用 X-Api-Key)',
+          model: model
+        });
+      }
+    } catch(e) {
+      // 继续尝试
+    }
+
+    // 尝试 3: 不使用 Bearer 前缀
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: '你好' }],
+          max_tokens: 10
+        }),
+        timeout: 10000
+      });
+
+      if (response.ok) {
+        result = await response.json();
+        return res.json({
+          success: true,
+          message: '连接成功！(不使用 Bearer)',
+          model: model
+        });
+      }
+    } catch(e) {
+      // 继续尝试
+    }
+
+    // 所有尝试都失败
+    res.status(401).json({
+      success: false,
+      error: '连接失败，请检查：1. API Key 是否正确 2. 端点 URL 是否正确 3. 模型名称是否正确',
+      debug: {
+        endpoint: endpoint,
+        model: model,
+        responseStatus: response?.status,
+        responseStatusText: response?.statusText
+      }
+    });
   } catch(e) {
-    res.status(500).json({ success: false, error: '连接失败：' + e.message });
+    res.status(500).json({
+      success: false,
+      error: '连接失败：' + e.message,
+      stack: e.stack
+    });
   }
 });
 
