@@ -449,6 +449,7 @@ async function renderSettings() {
   document.getElementById('mainContent').innerHTML = `
     <h4 class="mb-3">系统设置</h4>
     <div class="card mb-3"><div class="card-header">AI解析配置</div><div class="card-body"><p class="text-muted">配置AI API后，可对题目进行智能解析。支持OpenAI兼容接口。</p><div class="mb-3"><label class="form-label">API端点</label><input class="form-control" id="aiEndpoint" value="${cfg.endpoint||'https://api.openai.com/v1/chat/completions'}"></div><div class="mb-3"><label class="form-label">API密钥</label><input class="form-control" type="password" id="aiApiKey" placeholder="${cfg.hasKey?'已设置(不显示)':'sk-...'}"></div><div class="mb-3"><label class="form-label">模型</label><input class="form-control" id="aiModel" value="${cfg.model||'gpt-3.5-turbo'}"></div><button class="btn btn-primary" onclick="saveAIConfig()">保存配置</button><button class="btn btn-outline-warning ms-2" onclick="batchAiAnalyze()"><i class="bi bi-stars"></i> 批量AI解析所有题目</button></div></div>
+    <div class="card mb-3"><div class="card-header">修改密码</div><div class="card-body"><p class="text-muted">建议定期修改密码以确保账户安全。</p><div class="mb-3"><label class="form-label">原密码</label><input class="form-control" type="password" id="oldPassword" placeholder="请输入原密码"></div><div class="mb-3"><label class="form-label">新密码</label><input class="form-control" type="password" id="newPassword" placeholder="至少6位字符"></div><div class="mb-3"><label class="form-label">确认新密码</label><input class="form-control" type="password" id="confirmPassword" placeholder="再次输入新密码"></div><button class="btn btn-primary" onclick="changePassword()">修改密码</button></div></div>
     <div class="card"><div class="card-header">数据管理</div><div class="card-body"><p class="text-muted">导出或清空系统数据。清空操作不可恢复！</p><button class="btn btn-outline-primary" onclick="window.open('/api/data/export','_blank');showToast('导出成功','success')"><i class="bi bi-download"></i> 导出全部数据</button><button class="btn btn-outline-danger ms-2" onclick="if(confirm('确定清空所有数据？不可恢复！')){fetch('/api/data/export').then(()=>{location.reload()})}"><i class="bi bi-trash"></i> 清空全部数据</button></div></div>`;
 }
 
@@ -459,6 +460,28 @@ async function saveAIConfig() {
     model: document.getElementById('aiModel').value.trim(),
   });
   showToast('AI配置已保存', 'success');
+}
+
+async function changePassword() {
+  const oldPassword = document.getElementById('oldPassword')?.value?.trim();
+  const newPassword = document.getElementById('newPassword')?.value?.trim();
+  const confirmPassword = document.getElementById('confirmPassword')?.value?.trim();
+
+  if (!oldPassword || !newPassword) return showToast('请输入原密码和新密码', 'warning');
+  if (newPassword.length < 6) return showToast('新密码长度至少为6位', 'warning');
+  if (newPassword !== confirmPassword) return showToast('两次输入的新密码不一致', 'warning');
+
+  try {
+    await api('PUT', '/api/change-password', {
+      userId: currentUser.id,
+      oldPassword: oldPassword,
+      newPassword: newPassword
+    });
+    showToast('密码修改成功，请重新登录', 'success');
+    setTimeout(logout, 1500);
+  } catch(e) {
+    showToast(e.message || '修改密码失败', 'error');
+  }
 }
 
 async function batchAiAnalyze() {

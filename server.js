@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
 const path = require('path');
 const fs = require('fs');
 
@@ -34,14 +35,41 @@ function writeData(data) {
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 9); }
 
-// Init default admin
+// Init default admin - only if no users exist
 (function init() {
   const db = readData();
   if (db.users.length === 0) {
-    db.users.push({ id: 'admin', username: 'admin', password: 'admin123', name: '系统管理员', role: 'admin', createdAt: new Date().toISOString() });
-    db.users.push({ id: genId(), username: 'student1', password: '123456', name: '张三', role: 'student', createdAt: new Date().toISOString() });
-    db.users.push({ id: genId(), username: 'student2', password: '123456', name: '李四', role: 'student', createdAt: new Date().toISOString() });
+    const salt = bcrypt.genSaltSync(10);
+    db.users.push({
+      id: 'admin',
+      username: 'admin',
+      password: bcrypt.hashSync('Admin@2024Secure', salt),
+      name: '系统管理员',
+      role: 'admin',
+      createdAt: new Date().toISOString()
+    });
+    db.users.push({
+      id: genId(),
+      username: 'student1',
+      password: bcrypt.hashSync('Student@2024', salt),
+      name: '张三',
+      role: 'student',
+      createdAt: new Date().toISOString()
+    });
+    db.users.push({
+      id: genId(),
+      username: 'student2',
+      password: bcrypt.hashSync('Student@2024', salt),
+      name: '李四',
+      role: 'student',
+      createdAt: new Date().toISOString()
+    });
     writeData(db);
+    console.log('=== 默认账号已初始化 ===');
+    console.log('管理员账号: admin / Admin@2024Secure');
+    console.log('学员账号: student1 / Student@2024');
+    console.log('学员账号: student2 / Student@2024');
+    console.log('请登录后立即修改密码！');
   }
 })();
 
@@ -49,8 +77,9 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const db = readData();
-  const user = db.users.find(u => u.username === username && u.password === password);
+  const user = db.users.find(u => u.username === username);
   if (!user) return res.status(401).json({ error: '用户名或密码错误' });
+  if (!bcrypt.compareSync(password, user.password)) return res.status(401).json({ error: '用户名或密码错误' });
   res.json({ user: { id: user.id, username: user.username, name: user.name, role: user.role } });
 });
 
@@ -402,6 +431,28 @@ app.get('/api/data/export', (req, res) => {
   res.json(db);
 });
 
+// ==================== CHANGE PASSWORD ====================
+app.put('/api/change-password', (req, res) => {
+  const { userId, oldPassword, newPassword } = req.body;
+  if (!userId || !oldPassword || !newPassword) return res.status(400).json({ error: '请填写完整信息' });
+
+  const db = readData();
+  const user = db.users.find(u => u.id === userId);
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+
+  if (!bcrypt.compareSync(oldPassword, user.password)) {
+    return res.status(401).json({ error: '原密码错误' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: '新密码长度至少为6位' });
+  }
+
+  user.password = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(10));
+  writeData(db);
+  res.json({ success: true });
+});
+
 // Serve frontend
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -409,6 +460,8 @@ app.get('/', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`刷题系统运行在 http://localhost:${PORT}`);
-  console.log(`管理员账号: admin / admin123`);
-  console.log(`学员账号: student1 / 123456`);
+  console.log(`管理员账号: admin / Admin@2024Secure`);
+  console.log(`学员账号: student1 / Student@2024`);
+  console.log(`学员账号: student2 / Student@2024`);
+  console.log('请登录后立即修改密码！');
 });
