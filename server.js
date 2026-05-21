@@ -217,22 +217,36 @@ app.put('/api/questions/:id/analyze', async (req, res) => {
 
   if (aiConfig.apiKey) {
     try {
-      const response = await fetch(aiConfig.endpoint, {
+      const fullEndpoint = aiConfig.endpoint.endsWith('/chat/completions') ? aiConfig.endpoint : aiConfig.endpoint + '/chat/completions';
+      const response = await fetch(fullEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
-        body: JSON.stringify({ model: aiConfig.model, messages: [{ role: 'user', content: prompt }], max_tokens: 600, temperature: 0.7 })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${aiConfig.apiKey}`
+        },
+        body: JSON.stringify({
+          model: aiConfig.model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 800,
+          temperature: 0.7
+        })
       });
       if (response.ok) {
         const result = await response.json();
+        console.log('AI Response:', JSON.stringify(result).substring(0, 500));
         analysis = result.choices?.[0]?.message?.content?.trim();
+        // 清理可能的 Markdown 格式标记
+        if (analysis) {
+          analysis = analysis.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        }
+      } else {
+        console.log('AI API error:', response.status, await response.text());
       }
     } catch(e) { console.log('AI API error:', e.message); }
   }
 
   if (!analysis) {
     const keywords = extractKeywords(q.content);
-    const optionLabels = ['A','B','C','D','E','F'];
-    const selectedOpt = q.options && q.options.length > 0 ? q.options[optionLabels.indexOf(q.answer)] : '';
     analysis = `【知识点】${keywords.length > 0 ? keywords.join('、') : '待补充'}\n【选项分析】\n`;
     if (q.options && q.options.length > 0) {
       q.options.forEach((opt, i) => {
@@ -241,7 +255,7 @@ app.put('/api/questions/:id/analyze', async (req, res) => {
         analysis += `${label}. ${opt} - ${isCorrect ? '正确选项' : '干扰项'}\n`;
       });
     }
-    analysis += `【解题思路】本题为${q.type}，正确答案是${q.answer}。${selectedOpt ? '根据题目描述和选项内容，' : ''}需结合${keywords[0] || '相关知识点'}进行分析判断。\n【易错点】注意区分相似概念，避免被干扰项迷惑。`;
+    analysis += `【解题思路】本题为${q.type}，正确答案是${q.answer}。需结合${keywords[0] || '相关知识点'}进行分析判断。\n【易错点】注意区分相似概念，避免被干扰项迷惑。`;
   }
 
   q.analysis = analysis;
@@ -263,21 +277,31 @@ app.post('/api/questions/batch-analyze', async (req, res) => {
       let analysis = null;
       if (aiConfig.apiKey) {
         try {
-          const response = await fetch(aiConfig.endpoint, {
+          const fullEndpoint = aiConfig.endpoint.endsWith('/chat/completions') ? aiConfig.endpoint : aiConfig.endpoint + '/chat/completions';
+          const response = await fetch(fullEndpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
-            body: JSON.stringify({ model: aiConfig.model, messages: [{ role: 'user', content: prompt }], max_tokens: 600, temperature: 0.7 })
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${aiConfig.apiKey}`
+            },
+            body: JSON.stringify({
+              model: aiConfig.model,
+              messages: [{ role: 'user', content: prompt }],
+              max_tokens: 800,
+              temperature: 0.7
+            })
           });
           if (response.ok) {
             const result = await response.json();
             analysis = result.choices?.[0]?.message?.content?.trim();
+            if (analysis) {
+              analysis = analysis.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+            }
           }
         } catch(e) {}
       }
       if (!analysis) {
         const keywords = extractKeywords(q.content);
-        const optionLabels = ['A','B','C','D','E','F'];
-        const selectedOpt = q.options && q.options.length > 0 ? q.options[optionLabels.indexOf(q.answer)] : '';
         analysis = `【知识点】${keywords.join('、') || '待补充'}\n【选项分析】\n`;
         if (q.options && q.options.length > 0) {
           q.options.forEach((opt, i) => {
@@ -286,7 +310,7 @@ app.post('/api/questions/batch-analyze', async (req, res) => {
             analysis += `${label}. ${opt} - ${isCorrect ? '正确选项' : '干扰项'}\n`;
           });
         }
-        analysis += `【解题思路】本题为${q.type}，正确答案是${q.answer}。${selectedOpt ? '根据题目描述和选项内容，' : ''}需结合${keywords[0] || '相关知识点'}进行分析判断。\n【易错点】注意区分相似概念，避免被干扰项迷惑。`;
+        analysis += `【解题思路】本题为${q.type}，正确答案是${q.answer}。需结合${keywords[0] || '相关知识点'}进行分析判断。\n【易错点】注意区分相似概念，避免被干扰项迷惑。`;
       }
       q.analysis = analysis;
       count++;
