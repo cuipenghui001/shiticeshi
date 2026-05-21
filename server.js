@@ -11,7 +11,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(__dirname));
-app.use('/quiz', express.static(__dirname));
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -47,7 +46,7 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 })();
 
 // ==================== AUTH ====================
-app.post('/quiz/api/login', (req, res) => {
+app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const db = readData();
   const user = db.users.find(u => u.username === username && u.password === password);
@@ -56,12 +55,12 @@ app.post('/quiz/api/login', (req, res) => {
 });
 
 // ==================== USERS ====================
-app.get('/quiz/api/users', (req, res) => {
+app.get('/api/users', (req, res) => {
   const db = readData();
   res.json(db.users.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role, createdAt: u.createdAt })));
 });
 
-app.post('/quiz/api/users', (req, res) => {
+app.post('/api/users', (req, res) => {
   const { username, password, name } = req.body;
   if (!username || !password || !name) return res.status(400).json({ error: '请填写完整信息' });
   const db = readData();
@@ -72,7 +71,7 @@ app.post('/quiz/api/users', (req, res) => {
   res.json({ id: user.id, username: user.username, name: user.name, role: user.role, createdAt: user.createdAt });
 });
 
-app.post('/quiz/api/users/import', upload.single('file'), (req, res) => {
+app.post('/api/users/import', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '请上传文件' });
   try {
     const wb = XLSX.readFile(req.file.path);
@@ -99,7 +98,7 @@ app.post('/quiz/api/users/import', upload.single('file'), (req, res) => {
   }
 });
 
-app.delete('/quiz/api/users/:id', (req, res) => {
+app.delete('/api/users/:id', (req, res) => {
   const db = readData();
   const user = db.users.find(u => u.id === req.params.id);
   if (!user) return res.status(404).json({ error: '用户不存在' });
@@ -112,7 +111,7 @@ app.delete('/quiz/api/users/:id', (req, res) => {
 });
 
 // ==================== QUESTIONS ====================
-app.get('/quiz/api/questions', (req, res) => {
+app.get('/api/questions', (req, res) => {
   const db = readData();
   const { type, category, difficulty, search } = req.query;
   let result = db.questions;
@@ -123,12 +122,12 @@ app.get('/quiz/api/questions', (req, res) => {
   res.json(result);
 });
 
-app.get('/quiz/api/questions/categories', (req, res) => {
+app.get('/api/questions/categories', (req, res) => {
   const db = readData();
   res.json([...new Set(db.questions.map(q => q.category || '未分类'))]);
 });
 
-app.post('/quiz/api/questions/import', upload.single('file'), (req, res) => {
+app.post('/api/questions/import', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '请上传文件' });
   try {
     const wb = XLSX.readFile(req.file.path);
@@ -161,21 +160,21 @@ app.post('/quiz/api/questions/import', upload.single('file'), (req, res) => {
   }
 });
 
-app.delete('/quiz/api/questions/:id', (req, res) => {
+app.delete('/api/questions/:id', (req, res) => {
   const db = readData();
   db.questions = db.questions.filter(q => q.id !== req.params.id);
   writeData(db);
   res.json({ success: true });
 });
 
-app.delete('/quiz/api/questions', (req, res) => {
+app.delete('/api/questions', (req, res) => {
   const db = readData();
   db.questions = [];
   writeData(db);
   res.json({ success: true });
 });
 
-app.put('/quiz/api/questions/:id/analyze', async (req, res) => {
+app.put('/api/questions/:id/analyze', async (req, res) => {
   const db = readData();
   const q = db.questions.find(x => x.id === req.params.id);
   if (!q) return res.status(404).json({ error: '题目不存在' });
@@ -214,7 +213,7 @@ app.put('/quiz/api/questions/:id/analyze', async (req, res) => {
   res.json({ analysis });
 });
 
-app.post('/quiz/api/questions/batch-analyze', async (req, res) => {
+app.post('/api/questions/batch-analyze', async (req, res) => {
   const db = readData();
   const unanalyzed = db.questions.filter(q => !q.analysis);
   let count = 0;
@@ -256,7 +255,7 @@ function extractKeywords(text) {
   return dict.filter(w => text.includes(w)).slice(0, 8);
 }
 
-app.post('/quiz/api/questions/export', (req, res) => {
+app.post('/api/questions/export', (req, res) => {
   const db = readData();
   const data = [['序号','题型','题目内容','选项A','选项B','选项C','选项D','选项E','选项F','答案','分值','分类','难度','解析']];
   db.questions.forEach((q, i) => {
@@ -274,12 +273,12 @@ app.post('/quiz/api/questions/export', (req, res) => {
 });
 
 // ==================== EXAMS ====================
-app.get('/quiz/api/exams', (req, res) => {
+app.get('/api/exams', (req, res) => {
   const db = readData();
   res.json(db.exams);
 });
 
-app.post('/quiz/api/exams', (req, res) => {
+app.post('/api/exams', (req, res) => {
   const { title, questions, timeLimit, method, autoConfig } = req.body;
   const db = readData();
   let selectedQids = [];
@@ -305,7 +304,7 @@ app.post('/quiz/api/exams', (req, res) => {
   res.json(exam);
 });
 
-app.delete('/quiz/api/exams/:id', (req, res) => {
+app.delete('/api/exams/:id', (req, res) => {
   const db = readData();
   db.exams = db.exams.filter(e => e.id !== req.params.id);
   writeData(db);
@@ -313,7 +312,7 @@ app.delete('/quiz/api/exams/:id', (req, res) => {
 });
 
 // ==================== RESULTS ====================
-app.get('/quiz/api/results', (req, res) => {
+app.get('/api/results', (req, res) => {
   const db = readData();
   const { userId } = req.query;
   let results = db.results;
@@ -321,7 +320,7 @@ app.get('/quiz/api/results', (req, res) => {
   res.json(results);
 });
 
-app.post('/quiz/api/results', (req, res) => {
+app.post('/api/results', (req, res) => {
   const { examId, answers } = req.body;
   const db = readData();
   const exam = db.exams.find(e => e.id === examId);
@@ -342,7 +341,7 @@ app.post('/quiz/api/results', (req, res) => {
   res.json(result);
 });
 
-app.post('/quiz/api/results/export', (req, res) => {
+app.post('/api/results/export', (req, res) => {
   const db = readData();
   const { userId } = req.body;
   let results = db.results;
@@ -363,7 +362,7 @@ app.post('/quiz/api/results/export', (req, res) => {
 });
 
 // ==================== PRACTICE ====================
-app.get('/quiz/api/practice', (req, res) => {
+app.get('/api/practice', (req, res) => {
   const db = readData();
   const { userId } = req.query;
   let records = db.practice;
@@ -371,7 +370,7 @@ app.get('/quiz/api/practice', (req, res) => {
   res.json(records);
 });
 
-app.post('/quiz/api/practice', (req, res) => {
+app.post('/api/practice', (req, res) => {
   const { userId, records } = req.body;
   const db = readData();
   records.forEach(r => {
@@ -382,13 +381,13 @@ app.post('/quiz/api/practice', (req, res) => {
 });
 
 // ==================== CONFIG ====================
-app.get('/quiz/api/config/ai', (req, res) => {
+app.get('/api/config/ai', (req, res) => {
   const db = readData();
   const cfg = db.aiConfig || {};
   res.json({ endpoint: cfg.endpoint, model: cfg.model, hasKey: !!cfg.apiKey });
 });
 
-app.put('/quiz/api/config/ai', (req, res) => {
+app.put('/api/config/ai', (req, res) => {
   const db = readData();
   db.aiConfig = { apiKey: req.body.apiKey || '', endpoint: req.body.endpoint || 'https://api.openai.com/v1/chat/completions', model: req.body.model || 'gpt-3.5-turbo' };
   writeData(db);
@@ -396,7 +395,7 @@ app.put('/quiz/api/config/ai', (req, res) => {
 });
 
 // ==================== DATA EXPORT ====================
-app.get('/quiz/api/data/export', (req, res) => {
+app.get('/api/data/export', (req, res) => {
   const db = readData();
   res.setHeader('Content-Disposition', 'attachment; filename=系统数据备份.json');
   res.setHeader('Content-Type', 'application/json');
