@@ -210,7 +210,7 @@ app.put('/api/questions/:id/analyze', async (req, res) => {
 
   const optionLabels = ['A','B','C','D','E','F'];
   const optionsText = (q.options || []).map((o, i) => `${optionLabels[i]}. ${o}`).join('\n');
-  const prompt = `请对以下题目进行解析，说明解题思路和知识点：\n题型：${q.type}\n题目：${q.content}\n${q.options.length > 0 ? '选项：\n' + optionsText : ''}\n正确答案：${q.answer}\n\n请输出解析内容（200字以内），包括知识点分析和解题思路。`;
+  const prompt = `你是一个专业讲师，请对以下题目进行详细解析：\n\n题型：${q.type}\n题目内容：${q.content}\n${q.options.length > 0 ? '选项：\n' + optionsText : ''}\n正确答案：${q.answer}\n\n请按照以下格式输出解析内容（不超过300字）：\n【知识点】详细说明本题涉及的核心知识点和概念\n【选项分析】逐个分析每个选项，说明为什么正确或错误\n【解题思路】说明解题步骤和关键点，解释为什么应该选择${q.answer}\n【易错点】提醒常见的错误理解和陷阱`;
 
   const aiConfig = db.aiConfig || {};
   let analysis = null;
@@ -220,7 +220,7 @@ app.put('/api/questions/:id/analyze', async (req, res) => {
       const response = await fetch(aiConfig.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
-        body: JSON.stringify({ model: aiConfig.model, messages: [{ role: 'user', content: prompt }], max_tokens: 500, temperature: 0.7 })
+        body: JSON.stringify({ model: aiConfig.model, messages: [{ role: 'user', content: prompt }], max_tokens: 600, temperature: 0.7 })
       });
       if (response.ok) {
         const result = await response.json();
@@ -231,10 +231,17 @@ app.put('/api/questions/:id/analyze', async (req, res) => {
 
   if (!analysis) {
     const keywords = extractKeywords(q.content);
-    analysis = `【题型】${q.type}\n【知识点】${keywords.length > 0 ? keywords.join('、') : '待补充'}\n【难度】${q.difficulty || '中等'}\n`;
-    if (q.type === '单选题') analysis += `【解题思路】本题为单选题，正确答案是 ${q.answer}。需仔细阅读每个选项，排除干扰项，选择最符合题意的答案。`;
-    else if (q.type === '多选题') analysis += `【解题思路】本题为多选题，正确答案是 ${q.answer}。需逐一分析每个选项，选出所有符合题意的答案，注意不要漏选或多选。`;
-    else analysis += `【解题思路】本题为判断题，正确答案是「${q.answer}」。需准确理解题目陈述内容，判断其正确性。`;
+    const optionLabels = ['A','B','C','D','E','F'];
+    const selectedOpt = q.options && q.options.length > 0 ? q.options[optionLabels.indexOf(q.answer)] : '';
+    analysis = `【知识点】${keywords.length > 0 ? keywords.join('、') : '待补充'}\n【选项分析】\n`;
+    if (q.options && q.options.length > 0) {
+      q.options.forEach((opt, i) => {
+        const label = optionLabels[i];
+        const isCorrect = label === q.answer;
+        analysis += `${label}. ${opt} - ${isCorrect ? '正确选项' : '干扰项'}\n`;
+      });
+    }
+    analysis += `【解题思路】本题为${q.type}，正确答案是${q.answer}。${selectedOpt ? '根据题目描述和选项内容，' : ''}需结合${keywords[0] || '相关知识点'}进行分析判断。\n【易错点】注意区分相似概念，避免被干扰项迷惑。`;
   }
 
   q.analysis = analysis;
@@ -250,7 +257,7 @@ app.post('/api/questions/batch-analyze', async (req, res) => {
     try {
       const optionLabels = ['A','B','C','D','E','F'];
       const optionsText = (q.options || []).map((o, i) => `${optionLabels[i]}. ${o}`).join('\n');
-      const prompt = `请对以下题目进行解析：\n题型：${q.type}\n题目：${q.content}\n${q.options.length > 0 ? '选项：\n' + optionsText : ''}\n正确答案：${q.answer}\n\n请输出解析内容（200字以内）。`;
+      const prompt = `你是一个专业讲师，请对以下题目进行详细解析：\n\n题型：${q.type}\n题目内容：${q.content}\n${q.options.length > 0 ? '选项：\n' + optionsText : ''}\n正确答案：${q.answer}\n\n请按照以下格式输出解析内容（不超过300字）：\n【知识点】详细说明本题涉及的核心知识点和概念\n【选项分析】逐个分析每个选项，说明为什么正确或错误\n【解题思路】说明解题步骤和关键点，解释为什么应该选择${q.answer}\n【易错点】提醒常见的错误理解和陷阱`;
 
       const aiConfig = db.aiConfig || {};
       let analysis = null;
@@ -259,7 +266,7 @@ app.post('/api/questions/batch-analyze', async (req, res) => {
           const response = await fetch(aiConfig.endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
-            body: JSON.stringify({ model: aiConfig.model, messages: [{ role: 'user', content: prompt }], max_tokens: 500, temperature: 0.7 })
+            body: JSON.stringify({ model: aiConfig.model, messages: [{ role: 'user', content: prompt }], max_tokens: 600, temperature: 0.7 })
           });
           if (response.ok) {
             const result = await response.json();
@@ -269,7 +276,17 @@ app.post('/api/questions/batch-analyze', async (req, res) => {
       }
       if (!analysis) {
         const keywords = extractKeywords(q.content);
-        analysis = `【题型】${q.type}\n【知识点】${keywords.join('、') || '待补充'}\n【难度】${q.difficulty || '中等'}`;
+        const optionLabels = ['A','B','C','D','E','F'];
+        const selectedOpt = q.options && q.options.length > 0 ? q.options[optionLabels.indexOf(q.answer)] : '';
+        analysis = `【知识点】${keywords.join('、') || '待补充'}\n【选项分析】\n`;
+        if (q.options && q.options.length > 0) {
+          q.options.forEach((opt, i) => {
+            const label = optionLabels[i];
+            const isCorrect = label === q.answer;
+            analysis += `${label}. ${opt} - ${isCorrect ? '正确选项' : '干扰项'}\n`;
+          });
+        }
+        analysis += `【解题思路】本题为${q.type}，正确答案是${q.answer}。${selectedOpt ? '根据题目描述和选项内容，' : ''}需结合${keywords[0] || '相关知识点'}进行分析判断。\n【易错点】注意区分相似概念，避免被干扰项迷惑。`;
       }
       q.analysis = analysis;
       count++;
@@ -414,6 +431,37 @@ app.get('/api/config/ai', (req, res) => {
   const db = readData();
   const cfg = db.aiConfig || {};
   res.json({ endpoint: cfg.endpoint, model: cfg.model, hasKey: !!cfg.apiKey });
+});
+
+// Test AI connection
+app.post('/api/config/ai/test', async (req, res) => {
+  const db = readData();
+  const apiKey = req.body.apiKey;
+  const endpoint = req.body.endpoint || 'https://api.openai.com/v1/chat/completions';
+  const model = req.body.model || 'gpt-3.5-turbo';
+
+  if (!apiKey) return res.status(400).json({ error: '请提供 API Key' });
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'user', content: '你好' }],
+        max_tokens: 10
+      })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      res.json({ success: true, message: '连接成功', model: model });
+    } else {
+      res.status(401).json({ success: false, error: '连接失败，请检查 API Key 是否正确' });
+    }
+  } catch(e) {
+    res.status(500).json({ success: false, error: '连接失败：' + e.message });
+  }
 });
 
 app.put('/api/config/ai', (req, res) => {

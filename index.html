@@ -318,12 +318,18 @@ function exportQuestions() {
 
 // ==================== AI ANALYSIS ====================
 async function aiAnalyzeQuestion(qid) {
-  showToast('正在进行AI解析...', 'info');
+  const modal = document.getElementById('modalContainer');
+  modal.innerHTML = `<div class="modal fade show" style="display:block;background:rgba(0,0,0,.5)" onclick="if(event.target===this)closeModal()"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5>AI解析题目</h5><button class="btn-close" onclick="closeModal()"></button></div><div class="modal-body"><p class="text-muted">正在调用AI生成解析，请稍候...</p><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div></div></div></div>`;
+
   try {
     const data = await api('PUT', '/api/questions/' + qid + '/analyze');
+    closeModal();
     renderQuestionBank();
     showToast('AI解析完成！', 'success');
-  } catch(e) { showToast('AI解析失败：' + e.message, 'error'); }
+  } catch(e) {
+    closeModal();
+    showToast('AI解析失败：' + e.message, 'error');
+  }
 }
 
 // ==================== EXAM MANAGEMENT ====================
@@ -448,7 +454,7 @@ async function renderSettings() {
   const cfg = await api('GET', '/api/config/ai');
   document.getElementById('mainContent').innerHTML = `
     <h4 class="mb-3">系统设置</h4>
-    <div class="card mb-3"><div class="card-header">AI解析配置</div><div class="card-body"><p class="text-muted">配置AI API后，可对题目进行智能解析。支持OpenAI兼容接口。</p><div class="mb-3"><label class="form-label">API端点</label><input class="form-control" id="aiEndpoint" value="${cfg.endpoint||'https://api.openai.com/v1/chat/completions'}"></div><div class="mb-3"><label class="form-label">API密钥</label><input class="form-control" type="password" id="aiApiKey" placeholder="${cfg.hasKey?'已设置(不显示)':'sk-...'}"></div><div class="mb-3"><label class="form-label">模型</label><input class="form-control" id="aiModel" value="${cfg.model||'gpt-3.5-turbo'}"></div><button class="btn btn-primary" onclick="saveAIConfig()">保存配置</button><button class="btn btn-outline-warning ms-2" onclick="batchAiAnalyze()"><i class="bi bi-stars"></i> 批量AI解析所有题目</button></div></div>
+    <div class="card mb-3"><div class="card-header">AI解析配置</div><div class="card-body"><p class="text-muted">配置AI API后，可对题目进行智能解析。支持OpenAI兼容接口。</p><div class="mb-3"><label class="form-label">API端点</label><input class="form-control" id="aiEndpoint" value="${cfg.endpoint||'https://api.openai.com/v1/chat/completions'}"></div><div class="mb-3"><label class="form-label">API密钥</label><input class="form-control" type="password" id="aiApiKey" placeholder="${cfg.hasKey?'已设置(不显示)':'sk-...'}"></div><div class="mb-3"><label class="form-label">模型</label><input class="form-control" id="aiModel" value="${cfg.model||'gpt-3.5-turbo'}"></div><div class="d-flex gap-2"><button class="btn btn-primary" onclick="saveAIConfig()">保存配置</button><button class="btn btn-outline-success" onclick="testAIConfig()"><i class="bi bi-check-circle"></i> 测试连接</button><button class="btn btn-outline-warning" onclick="batchAiAnalyze()"><i class="bi bi-stars"></i> 批量AI解析所有题目</button></div></div></div>
     <div class="card mb-3"><div class="card-header">修改密码</div><div class="card-body"><p class="text-muted">建议定期修改密码以确保账户安全。</p><div class="mb-3"><label class="form-label">原密码</label><input class="form-control" type="password" id="oldPassword" placeholder="请输入原密码"></div><div class="mb-3"><label class="form-label">新密码</label><input class="form-control" type="password" id="newPassword" placeholder="至少6位字符"></div><div class="mb-3"><label class="form-label">确认新密码</label><input class="form-control" type="password" id="confirmPassword" placeholder="再次输入新密码"></div><button class="btn btn-primary" onclick="changePassword()">修改密码</button></div></div>
     <div class="card"><div class="card-header">数据管理</div><div class="card-body"><p class="text-muted">导出或清空系统数据。清空操作不可恢复！</p><button class="btn btn-outline-primary" onclick="window.open('/api/data/export','_blank');showToast('导出成功','success')"><i class="bi bi-download"></i> 导出全部数据</button><button class="btn btn-outline-danger ms-2" onclick="if(confirm('确定清空所有数据？不可恢复！')){fetch('/api/data/export').then(()=>{location.reload()})}"><i class="bi bi-trash"></i> 清空全部数据</button></div></div>`;
 }
@@ -460,6 +466,31 @@ async function saveAIConfig() {
     model: document.getElementById('aiModel').value.trim(),
   });
   showToast('AI配置已保存', 'success');
+}
+
+async function testAIConfig() {
+  const endpoint = document.getElementById('aiEndpoint').value.trim();
+  const apiKey = document.getElementById('aiApiKey').value.trim();
+  const model = document.getElementById('aiModel').value.trim();
+
+  if (!apiKey) return showToast('请输入 API Key', 'warning');
+  if (!endpoint) return showToast('请输入 API 端点', 'warning');
+
+  showToast('正在测试连接...', 'info');
+  try {
+    const data = await api('POST', '/api/config/ai/test', {
+      endpoint: endpoint,
+      apiKey: apiKey,
+      model: model
+    });
+    if (data.success) {
+      showToast(`连接成功！模型：${data.model}`, 'success');
+    } else {
+      showToast(data.error || '连接失败', 'error');
+    }
+  } catch(e) {
+    showToast('测试失败：' + e.message, 'error');
+  }
 }
 
 async function changePassword() {
